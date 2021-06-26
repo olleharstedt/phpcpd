@@ -376,15 +376,12 @@ class Delta
 
 class SimpleRegion
 {
-	/** Version for serialization. */
-	private static $serialVersionUID = 1;
-
     /** Region start position (inclusive).
-        * @var int */
+     * @var int */
 	private $start;
 
     /** Region end position (inclusive).
-        * @var int */
+     * @var int */
 	private $end;
 
 	/** Constructor. */
@@ -477,9 +474,6 @@ class SimpleRegion
 
 final class Region extends SimpleRegion
 {
-	/** Version for serialization. */
-	private static $serialVersionUID = 1;
-
 	/** Name that is used if region is created without name */
 	public static $UNKNOWN_ORIGIN = "Unknown origin";
 
@@ -967,7 +961,7 @@ class CloneObject extends KeyValueStoreBase
      *
      * @var ?Region[]
 	 */
-	private $gaps = null;
+	public $gaps = null;
 
     /** Delta size in units
      * @var int */
@@ -1190,12 +1184,12 @@ class CloneClass extends KeyValueStoreBase
 
     /** The length of the clone class (number of units).
      * @var int */
-	private $normalizedLength;
+	public $normalizedLength;
 
     /** A list containing all clones of a class.
      * Hash table and linked list implementation of the Set interface, with predictable iteration order. This implementation differs from HashSet in that it maintains a doubly-linked list running through all of its entries. This linked list defines the iteration ordering, which is the order in which elements were inserted into the set (insertion-order). Note that insertion order is not affected if an element is re-inserted into the set. (An element e is reinserted into a set s if s.add(e) is invoked when s.contains(e) would return true immediately prior to the invocation.) 
      * @var CloneObject[] */
-	private $clones = [];
+	public $clones = [];
 
 	/**
 	 * Create a new clone class with a given id
@@ -1369,7 +1363,7 @@ class MultiplexingCloneClassesCollection
             }
         }
 
-        asort($resultSet);
+        //asort($resultSet);
         // TODO: Sort by length
         //return CollectionUtils.sort(resultSet, ECloneClassComparator.NORMALIZED_LENGTH);
         return $resultSet;
