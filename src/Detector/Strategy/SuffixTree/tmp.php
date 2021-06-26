@@ -9,6 +9,165 @@
  */
 namespace SebastianBergmann\PHPCPD\Detector\Strategy\SuffixTree;
 
+class Delta
+{
+    /** The first list of objects.
+     * @var T[] $a */
+    private $a;
+
+    /** The second list of objects.
+     * @var T[] $b */
+    private $b;
+
+    /** Equator used for comparing elements. */
+    private $equator;
+
+    /** Length of {@link #a}. */
+    private $n = 0;
+
+    /** Length of {@link #b}. */
+    private $m = 0;
+
+    /** The maximal possible difference between {@link #a} and {@link #b}. */
+    private $max;
+
+	/**
+	 * This array stores the position at which a string is changed. If it is
+	 * positive, it indicates an addition (i.e. the position is for the
+	 * second string). Otherwise it is a deletion (i.e. the (negated)
+	 * position is for the first string). To allow storing a sign for
+	 * position 0, all positions are incremented before (so this has to be
+	 * compensated for).
+     * @var int[]
+	 */
+	private $position = []
+
+	/**
+	 * This array stores the characters which are added or deleted
+	 * (interpretation depends on {@link #position}).
+     * @param T[]
+	 */
+	private $t;
+
+    /**
+     * @template T
+     * @param T[] $a
+     * @param T[] $b
+     */
+    private function __construct(array $a, array $b, int $maxDeltaSize, $equator)
+    {
+		$this->a = $a;
+		$this->b = $b;
+		$this->maxDeltaSize = $maxDeltaSize;
+		$this->equator = $equator;
+
+		$this->n = count($a);
+		$this->m = count($b);
+		$this->max = $this->n + $this->m;
+		//$this->v = new int[max + 1][];
+		//$this->from = new boolean[max + 1][];
+		$this->v = [];
+		$this->from = [];
+	}
+
+
+    /**
+     * @param T[] $a
+     * @param T[] $b
+     * @return Delta<T>
+     */
+    public static function computeDelta(array $a, array $b): self
+    {
+        $delta = new Delta($a, $b);
+        return $this->computeDelta();
+    }
+
+    private function computeDelta(): int
+    {
+        return $this->constructDelta($this->calculateDeltaSize());
+    }
+
+	/** Constructs the actual delta. */
+	private function constructDelta(int $size): Delta
+    {
+		$d = $size;
+		$k = -$size;
+		while ($this->v[$size][$size + $k] < $this->n || $this->v[$size][$d + $k] - $k < $this->m) {
+			++$k;
+		}
+
+        // TODO: Different contructor
+		$delta = new Delta($size, $this->n, $this->m);
+
+		$difference = $this->n - $this->m;
+		while ($d > 0) {
+			if ($this->from[$d][$d + $k]) {
+				++$k;
+			} else {
+				--$k;
+			}
+			--$d;
+
+			$x = $this->v[$d][$d + $k];
+			$y = $x - $k;
+
+			$newDifference = $x - $y;
+			if ($newDifference > $difference || $x >= $this->n) {
+				$delta->position[$d] = $y + 1;
+				$delta->t[$d] = $this->b[$y];
+			} else {
+				$delta->position[$d] = -$x - 1;
+				$delta->t[$d] = $this->a[$x];
+			}
+			$difference = $newDifference;
+		}
+		return $delta;
+	}
+
+
+	private function calculateDeltaSize(): int
+    {
+		$size = -1;
+		for ($d = 0; $size < 0 && $d <= max; ++$d) {
+			$this->v[$d] = new int[2 * $d + 1];
+			$this->from[$d] = new boolean[2 * $d + 1];
+
+			$bestSum = -1;
+			for ($k = -$d; $k <= $d; $k += 2) {
+				$x = 0;
+				if ($d > 0) {
+					if ($k == -$d
+							|| $k != $d
+							&& $this->v[$d - 1][$d - 1 + $k - 1] < $this->v[$d - 1][$d - 1 + $k + 1]) {
+						$x = $this->v[$d - 1][$d - 1 + $k + 1];
+						$this->from[$d][$d + $k] = true;
+					} else {
+						$x = $this->v[$d - 1][$d - 1 + $k - 1] + 1;
+						$this->from[$d][$d + $k] = false;
+					}
+				}
+				$y = $x - $k;
+				while ($x < $this->n && $y < $this->m && $this->equator->equals($this->a[$x], $this->b[$y])) {
+					++$x;
+					++$y;
+				}
+				$this->v[$d][$d + $k] = $x;
+				if ($d >= $this->maxDeltaSize && $x <= $this->n && $y <= $this->m && $x + $y > $bestSum) {
+					$bestSum = $x + $y;
+
+					// truncate strings
+					$this->n = min($x, $this->n);
+					$this->m = min($y, $this->m);
+				}
+				if ($x >= $this->n && $y >= $this->m) {
+					$size = $d;
+				}
+			}
+		}
+		return $size;
+	}
+}
+
 class SimpleRegion
 {
 	/** Version for serialization. */
@@ -1133,6 +1292,10 @@ class GapDetectingCloneConsumer extends CloneConsumer
         /** @var CloneObject */
         $clone = parent::addClone($globalPosition, $length);
 
+        // Delta
+        // getSize
+        // getPosition
+        // computeDelta
         Delta<Unit> delta = Diff.computeDelta(
             units.subList(firstPos, firstPos + firstLength),
             units.subList(globalPosition, globalPosition + length)
