@@ -71,6 +71,11 @@ class ApproximateCloneDetectingSuffixTree extends SuffixTree
     private $headEquality = 10;
 
     /**
+     * @var CloneConsumer
+     */
+    private $consumer;
+
+    /**
      * Create a new suffix tree from a given word. The word given as parameter
      * is used internally and should not be modified anymore, so copy it before
      * if required.
@@ -108,10 +113,11 @@ class ApproximateCloneDetectingSuffixTree extends SuffixTree
      *
      * @return CloneInfo[]
      */
-    public function findClones(int $minLength, int $maxErrors, int $headEquality): array
+    public function findClones(int $minLength, int $maxErrors, int $headEquality, CloneConsumer $consumer): array
     {
         $this->minLength    = $minLength;
         $this->headEquality = $headEquality;
+        $this->consumer = $consumer;
         $this->cloneInfos   = [];
 
         for ($i = 0; $i < count($this->word); $i++) {
@@ -479,6 +485,20 @@ class ApproximateCloneDetectingSuffixTree extends SuffixTree
                 }
             }
         }
+
+		// report clone
+		$this->consumer->startCloneClass($length);
+		$this->consumer->addClone($wordBegin, $length);
+		for ($j = 0; $j < $otherClones->size(); ++$j) {
+			$start = $otherClones->getFirst($j);
+			$otherLength = $otherClones->getSecond($j);
+			$this->consumer->addClone($start, $otherLength);
+		}
+
+		// is this clone actually relevant?
+		if (!$this->consumer->completeCloneClass()) {
+			return;
+		}
 
         // add clone to $otherClones to avoid getting more duplicates
         for ($i = $wordBegin; $i < $wordEnd; $i += $this->INDEX_SPREAD) {

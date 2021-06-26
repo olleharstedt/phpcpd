@@ -39,4 +39,29 @@ class Token extends AbstractToken
     {
         return $token->hashCode() === $this->hashCode();
     }
+
+    public function getElementUniformPath(): string
+    {
+        return $this->file . '_' . $this->line;
+    }
+
+    public function getIndexInElement(): int
+    {
+        return $this->line;
+    }
+
+    public function getContent(): string
+    {
+        return $this->content;
+    }
+
+    public function getFilteredStartOffset(): int
+    {
+        return 0;
+    }
+
+    public function getFilteredEndOffset(): int
+    {
+        return 1;
+    }
 }

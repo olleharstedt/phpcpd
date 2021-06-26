@@ -37,6 +37,11 @@ final class SuffixTreeStrategy extends AbstractStrategy
      */
     private $result;
 
+    /**
+     * @var CloneConsumer
+     */
+    private $consumer;
+
     public function processFile(string $file, CodeCloneMap $result): void
     {
         $content = file_get_contents($file);
@@ -67,14 +72,19 @@ final class SuffixTreeStrategy extends AbstractStrategy
             throw new Exception('Missing result');
         }
 
-        // Sentinel = End of word
-        $this->word[] = new Sentinel();
+        assert_options(ASSERT_ACTIVE, 1);
+        assert_options(ASSERT_WARNING, 1);
+
+        require_once __DIR__ . '/SuffixTree/tmp.php';
+        //$consumer = new SuffixTree\GapDetectingCloneConsumer($this->word);
+        $consumer = new SuffixTree\CloneConsumer($this->word);
 
         $tree       = new ApproximateCloneDetectingSuffixTree($this->word);
         $cloneInfos = $tree->findClones(
             $this->config->getMinTokens(),
             $this->config->getEditDistance(),
-            $this->config->getHeadEquality()
+            $this->config->getHeadEquality(),
+            $consumer
         );
 
         foreach ($cloneInfos as $cloneInfo) {
@@ -101,5 +111,12 @@ final class SuffixTreeStrategy extends AbstractStrategy
                 );
             }
         }
+        $classes = $consumer->getCloneClasses();
+        var_dump($classes);
+    }
+
+    public function setConsumer(CloneConsumer $consumer): void
+    {
+        $this->consumer = $consumer;
     }
 }

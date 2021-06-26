@@ -9,6 +9,10 @@
  */
 namespace SebastianBergmann\PHPCPD\Detector\Strategy\SuffixTree;
 
+use SplPriorityQueue;
+use function assert;
+use Exception;
+
 /**
  * Base class for units.
  * <p>
@@ -83,7 +87,9 @@ abstract class Unit
 		$this->filteredEndOffset = $filteredEndOffset;
 		$this->elementUniformPath = $elementUniformPath;
 		$this->content = $content;
-		$this->unnormalizedContent = $unnormalizedContent;
+        // NB
+		//$this->unnormalizedContent = $unnormalizedContent;
+		$this->unnormalizedContent = $content;
 		$this->indexInElement = $indexInElement;
 	}
 
@@ -545,7 +551,7 @@ class IdProvider
     private $idCounter = 0;
 
     /** Constructor */
-    protected function __construct(int $lowestFreeId = 0) {
+    public function __construct(int $lowestFreeId = 0) {
         $this->idCounter = $lowestFreeId;
     }
 
@@ -742,6 +748,16 @@ class TextRegionLocation extends ElementLocation
 		return $this->rawEndLine;
 	}
 
+    public function getUnfilteredOffset(int $offset): int
+    {
+        return $offset;
+    }
+
+    public function convertUnfilteredOffsetToLine(int $offset): int
+    {
+        return $offset;
+    }
+
 	/**
 	 * <p>
 	 * This includes the start and end line which is typically sufficient for
@@ -778,7 +794,9 @@ class CloneUtils
      */
     public static function createFingerprint(array $clones): string
     {
-        assert(!empty($clones), "Cannot create fingerprint for empty collection of clones");
+        if (empty($clones)) {
+            throw new Exception('Cannot create fingerprint for empty collection of clones');
+        }
 
         if (self::allFingerprintsEqual($clones)) {
             return $clones[0]->getFingerprint();
@@ -815,7 +833,7 @@ abstract class KeyValueStoreBase
 	 * the id provider used.
      * @var int
 	 */
-	private $id;
+	protected $id;
 
     /** Map that stores key-value pairs
      * @var array<string, object> */
@@ -919,7 +937,9 @@ class CloneObject extends KeyValueStoreBase
     ) {
         parent::__construct($id);
 
-        assert($location !== null);
+        if ($location === null) {
+            throw new Exception('$location is null');
+        }
 
 		$this->cloneClass = $cloneClass;
 
@@ -927,14 +947,17 @@ class CloneObject extends KeyValueStoreBase
 		// - during clone detection, many clones can be created
 		// - all fingerprints of non-gapped clones in same clone class are equal
 		// (but created as different instances)
-		$this->fingerprint = $fingerprint->intern();
+		//$this->fingerprint = $fingerprint->intern();
+		$this->fingerprint = $fingerprint;
 
 		$this->location = $location;
 		$this->startUnitIndexInElement = $startUnitIndexInElement;
 		$this->lengthInUnits = $lengthInUnits;
 		$this->deltaInUnits = $deltaInUnits;
 
-        assert($location->getRawEndOffset() >= $location->getRawStartOffset(), "Length must not be negative: " . (string) $this);
+        if (!($location->getRawEndOffset() >= $location->getRawStartOffset())) {
+            throw new Exception("Length must not be negative: " . (string) $this);
+        }
 
 		if ($cloneClass !== null) {
 			$cloneClass->add($this);
@@ -1107,12 +1130,12 @@ class CloneClass extends KeyValueStoreBase
 {
 
     /** The length of the clone class (number of units).
-        * @var int */
+     * @var int */
 	private $normalizedLength;
 
     /** A list containing all clones of a class.
      * Hash table and linked list implementation of the Set interface, with predictable iteration order. This implementation differs from HashSet in that it maintains a doubly-linked list running through all of its entries. This linked list defines the iteration ordering, which is the order in which elements were inserted into the set (insertion-order). Note that insertion order is not affected if an element is re-inserted into the set. (An element e is reinserted into a set s if s.add(e) is invoked when s.contains(e) would return true immediately prior to the invocation.) 
-     * @var Clone[] */
+     * @var CloneObject[] */
 	private $clones = [];
 
 	/**
@@ -1208,7 +1231,7 @@ class CloneClass extends KeyValueStoreBase
     public function add(CloneObject $clone): void
     {
         $cloneIsInOtherClass =
-               $clone->getCloneClass()->hashCode() !== $this->hashCode()
+               $clone->getCloneClass()->id !== $this->id
             && $clone->getCloneClass() !== null;
 		if ($cloneIsInOtherClass) {
 			$clone->getCloneClass()->remove($clone);
@@ -1281,7 +1304,7 @@ class MultiplexingCloneClassesCollection
         /** @var CloneClass[] */
         $resultSet = [];
 
-        foreach ($collections as $boundedCollection) {
+        foreach ($this->collections as $boundedCollection) {
             foreach ($boundedCollection as $item) {
                 $resultSet[] = $item;
             }
@@ -1312,8 +1335,9 @@ class CloneConsumer
     /** @var int */
     private $top = PHP_INT_MAX;
 
-    /** @var Unit[] */
-    private $units = [];
+    // Testing with tokens
+    /** @var Token[] */
+    protected $units = [];
 
     /** @var array<string, TextRegionLocation> */
 	private $uniformPathToElement = [];
@@ -1325,17 +1349,32 @@ class CloneConsumer
         * @var CloneClass */
     protected $currentCloneClass;
 
+	/** Flag that determines whether the units are stored in clones */
+	protected $storeUnits = false;
+
     /**
      * Creates a ICloneConsumer that writes the {@link CloneClass}es it
      * creates into the given set
      */
-    public function __construct()
+    public function __construct(array $word)
     {
         $this->results = new MultiplexingCloneClassesCollection();
         $this->idProvider = new IdProvider();
+        $this->units = $word;
+
+        foreach ($word as $token) {
+            $this->uniformPathToElement[$token->file . '_' . $token->line] = new TextRegionLocation(
+                $token->file . '_' . $token->line,
+                $token->file . '_' . $token->line,
+                $token->line,
+                $token->line,
+                $token->line,
+                $token->line,
+            );
+        }
 
         if ($this->top === PHP_INT_MAX) {
-            $this->results->addCollection([]);
+            $this->results->addCollection(new SplPriorityQueue());
         } else {
             //$this->results->addCollection($this->boundedCollection(NORMALIZED_LENGTH));
             //$this->results->addCollection($this->boundedCollection(CARDINALITY));
@@ -1364,18 +1403,24 @@ class CloneConsumer
     /** Adds a clone to the current {@link CloneClass} */
     public function addClone(int $globalPosition, int $length): CloneObject
     {
+        //var_dump($globalPosition);
+        //var_dump($length);
         // compute length of clone in lines
         $firstUnit = $this->units[$globalPosition];
         $lastUnit = $this->units[$globalPosition + $length - 1];
-        /** @var Unit[] */
+        /** @var Token[] */
         $cloneUnits = array_slice($this->units, $globalPosition, $globalPosition + $length);
 
         $element = $this->resolveElement($firstUnit->getElementUniformPath());
+        //var_dump($element);
         $startUnitIndexInElement = $firstUnit->getIndexInElement();
         $endUnitIndexInElement = $lastUnit->getIndexInElement();
         $lengthInUnits = $endUnitIndexInElement - $startUnitIndexInElement + 1;
+        //var_dump($lengthInUnits);
         assert($lengthInUnits >= 0, "Negative length in units!");
         $fingerprint = $this->createFingerprint($globalPosition, $length);
+        //var_dump($fingerprint);
+        //var_dump($this->currentCloneClass);
 
         $cloneObject = new CloneObject(
             $this->idProvider->provideId(),
@@ -1385,18 +1430,19 @@ class CloneConsumer
                 $firstUnit->getFilteredStartOffset(),
                 $lastUnit->getFilteredEndOffset()
             ),
-            $this->startUnitIndexInElement,
-            $this->lengthInUnits,
-            $fingerprint
+            $startUnitIndexInElement,
+            $lengthInUnits,
+            $fingerprint,
+            0  // deltaInUnits
         );
 
-        if ($storeUnits) {
+        if ($this->storeUnits) {
             CloneUtils::setUnits($cloneObject, $cloneUnits);
         }
 
         $this->currentCloneClass->add($cloneObject);
 
-        return cloneObject;
+        return $cloneObject;
     }
 
     /** Creates the location for a cloneObject. */
@@ -1449,7 +1495,7 @@ class CloneConsumer
     }
 
     /** Return list containing all retained cloneObject classes
-        * @var CloneClass[] */
+     * @var CloneClass[] */
     public function getCloneClasses(): array
     {
         return $this->results->getCloneClasses();
@@ -1470,9 +1516,9 @@ class GapDetectingCloneConsumer extends CloneConsumer
     private $firstLength = 0;
 
     /** Constructor. */
-    private function __construct()
+    public function __construct(array $word)
     {
-        parent::__construct();
+        parent::__construct($word);
     }
 
     public function startCloneClass(int $normalizedLength): void
@@ -1489,7 +1535,7 @@ class GapDetectingCloneConsumer extends CloneConsumer
 
         $delta = Delta::computeDeltaStatic(
             array_slice($this->units, $this->firstPos, $this->firstPos + $this->firstLength),
-            array_slice($this->units, $globalPosition, $globalPosition + length)
+            array_slice($this->units, $globalPosition, $globalPosition + $length)
         );
 
         if ($this->firstClone !== null) {
