@@ -1,5 +1,203 @@
 <?php
 
+/**
+ * Base class for locations. Locations are immutable and thus return this at
+ * deep cloning.
+ * 
+ * @author $Author: hummelb $
+ * @version $Rev: 43290 $
+ * @ConQAT.Rating GREEN Hash: 82BEB1645BABD9B7DBA7D15166C05209
+ */
+class ElementLocation
+{
+
+	/** Version used for serialization. */
+	private static $serialVersionUID = 1;
+
+    /** The location (see {@link #getLocation()}).
+        * @var string */
+	private $location;
+
+    /** The uniform path (see {@link #getUniformPath()}).
+        * @var string */
+	private $uniformPath;
+
+	/** Constructor. */
+    public function __construct (string $location, string $uniformPath)
+    {
+		$this->location = $location;
+		$this->uniformPath = $uniformPath;
+	}
+
+	/**
+	 * Get a string that identifies the location of the element, e.g. a file
+	 * system path. This location is specific to the running analysis, i.e.
+	 * depends on time and the concrete machine ConQAT is running on.
+	 */
+    public function getLocation(): string
+    {
+		return $this->location;
+	}
+
+	/**
+	 * Returns the uniform path. This is an artificial path that uniquely
+	 * defines a resource across machine boundaries. This should be used for
+	 * persisted information.
+	 */
+    public function getUniformPath(): string
+    {
+		return $this->uniformPath;
+	}
+
+    public function deepClone(): self
+    {
+		return $this;
+	}
+
+	/**
+	 * Returns a single line description of the location that is meaningful to
+	 * the user.
+	 */
+    public function toLocationString(): string
+    {
+		return getUniformPath();
+	}
+
+    public function __toString(): string
+    {
+		return $this->toLocationString();
+	}
+}
+
+/**
+ * This class denotes a region of text in an element.
+ * 
+ * <b>Context:</b> Due to the way ConQAT deals with text, the class is a little
+ * bit more complex than expected. First, in ConQAT all text is normalized to
+ * use Unix style line endings (regardless of the line endings in the file).
+ * Second, ConQAT may apply filters, i.e. the internal (filtered) text
+ * representation may be different from the (raw) text in the file.
+ * Additionally, a location is best described by character offsets into the
+ * string, while a user typically expects line numbers. Conversion between all
+ * these representations is easy, as long as ConQAT internal representation is
+ * available. Without it, conversion is not possible.
+ * 
+ * <b>Rationale:</b> When findings are reported to a user, the raw offsets
+ * and/or lines should be used, as these are more meaningful (visible in other
+ * editors as well). Also for persisting in a report, the raw positions are
+ * preferred, as the filtered ones depend on the ConQAT configuration, while raw
+ * offsets are independent of filter configuration. When working with findings
+ * within ConQAT, typically the filtered positions are needed, as most
+ * processors also work on the filtered representation. However, in such a case
+ * the corresponding element is typically available and thus conversion to the
+ * filtered representation is easy.
+ * 
+ * <b>Implementation:</b> The finding (as well as the findings report) only
+ * stores raw positions. While the offsets would be sufficient, we also store
+ * line numbers to be able to provide meaningful user output. Filtered positions
+ * are not stored, but are made available via utility methods in the resource
+ * bundle. All fields are mandatory, i.e., it is not allowed to fill any
+ * position entry with invalid data (contrary to the old CodeRegionLocation,
+ * where -1 could be used to denote missing information).
+ * 
+ * @author $Author: goede $
+ * @version $Rev: 41698 $
+ * @ConQAT.Rating GREEN Hash: 17529D0E53A92D53C5A9E732B5BA55C8
+ */
+class TextRegionLocation extends ElementLocation
+{
+
+	/** Version used for serialization. */
+	private static $serialVersionUID = 1;
+
+	/**
+	 * The absolute start position of the region in the (raw) text (zero based,
+	 * inclusive).
+	 */
+	private $rawStartOffset = 0;
+
+	/**
+	 * The absolute end position in the (raw) text (zero based, inclusive).
+	 */
+	private $rawEndOffset = 0;
+
+	/**
+	 * The line corresponding to {@link #rawStartOffset} (one-based, inclusive).
+	 */
+	private $rawStartLine = 0;
+
+	/**
+	 * The line corresponding to {@link #rawEndOffset} (one-based, inclusive).
+	 */
+	private $rawEndLine = 0;
+
+	/** Constructor. */
+    public function __construct(
+        string $location,
+        string $uniformPath,
+        int $rawStartOffset,
+        int $rawEndOffset,
+        int $rawStartLine,
+        int $rawEndLine
+    ) {
+        parent::__construct($location, $uniformPath);
+
+		assert($rawStartOffset <= $rawEndOffset, "Start offset may not be after end offset.");
+		assert($rawStartLine <= $rawEndLine, "Start line may not be after end line.");
+
+		$this->rawStartOffset = $rawStartOffset;
+		$this->rawEndOffset = $rawEndOffset;
+		$this->rawStartLine = $rawStartLine;
+		$this->rawEndLine = $rawEndLine;
+	}
+
+	/**
+	 * Returns the absolute start position of the region in the (raw) text (zero
+	 * based, inclusive).
+	 */
+    public function getRawStartOffset(): int
+    {
+		return $this->rawStartOffset;
+	}
+
+	/**
+	 * Returns the absolute end position in the (raw) text (zero based,
+	 * inclusive).
+	 */
+    public function getRawEndOffset(): int
+    {
+		return $this->rawEndOffset;
+	}
+
+	/**
+	 * Returns the line corresponding to {@link #getRawStartOffset()}
+	 * (one-based, inclusive).
+	 */
+    public function getRawStartLine(): int
+    {
+		return $this->rawStartLine;
+	}
+
+	/**
+	 * Returns the line corresponding to {@link #getRawEndOffset()} (one-based,
+	 * inclusive).
+	 */
+    public function getRawEndLine(): int
+    {
+		return $this->rawEndLine;
+	}
+
+	/**
+	 * <p>
+	 * This includes the start and end line which is typically sufficient for
+	 * debugging and showing to a user.
+	 */
+    public function toLocationString(): string
+    {
+		return parent->toLocationString() . ":" . $this->rawStartLine . "-" . $this->rawEndLine;
+	}
+}
+
 class CloneUtils
 {
     /**
@@ -98,10 +296,11 @@ abstract class KeyValueStoreBase
 
 }
 
-class Clone extends KeyValueStoreBase {
-
-	/** {@link CloneClass} this clone belongs to */
-	private CloneClass cloneClass;
+class Clone extends KeyValueStoreBase
+{
+    /** {@link CloneClass} this clone belongs to
+        * @param CloneClass */
+	private $cloneClass;
 
 	/** The location of the clone. */
 	private final TextRegionLocation location;
@@ -307,8 +506,9 @@ class Clone extends KeyValueStoreBase {
 	}
 
 	/** Sets the clone class. Only called from CloneClass. */
-	/* package */void setCloneClass(CloneClass cloneClass) {
-		this.cloneClass = cloneClass;
+    public function setCloneClass(CloneClass $cloneClass): void
+    {
+		$this->cloneClass = $cloneClass;
 	}
 }
 
@@ -322,7 +522,7 @@ class CloneClass extends KeyValueStoreBase
     /** A list containing all clones of a class.
      * Hash table and linked list implementation of the Set interface, with predictable iteration order. This implementation differs from HashSet in that it maintains a doubly-linked list running through all of its entries. This linked list defines the iteration ordering, which is the order in which elements were inserted into the set (insertion-order). Note that insertion order is not affected if an element is re-inserted into the set. (An element e is reinserted into a set s if s.add(e) is invoked when s.contains(e) would return true immediately prior to the invocation.) 
      * @var Clone[] */
-	private final $clones = [];
+	private $clones = [];
 
 	/**
 	 * Create a new clone class with a given id
@@ -380,29 +580,31 @@ class CloneClass extends KeyValueStoreBase
 	}
 
 	/** Returns hash code of fingerprint */
-	@Override
-	public int hashCode() {
-		return getFingerprint().hashCode();
+    public function hashCode(): int
+    {
+		return md5($this->getFingerprint());
 	}
 
 	/** Returns the number of gaps in the clone with the most gaps */
-	public int getMaxGapNumber() {
-		int gapCount = 0;
-		for (Clone clone : getClones()) {
-			if (gapCount < clone.gapCount()) {
-				gapCount = clone.gapCount();
+    public function getMaxGapNumber(): int
+    {
+		$gapCount = 0;
+        foreach ($this->getClones() as $clone) {
+			if ($gapCount < $clone->gapCount()) {
+				$gapCount = $clone->gapCount();
 			}
 		}
-		return gapCount;
+		return $gapCount;
 	}
 
 	/** Returns sum of gaps contained in all clones */
-	public int getGapCount() {
-		int gapCount = 0;
-		for (Clone clone : getClones()) {
-			gapCount += clone.gapCount();
+    public function getGapCount(): int
+    {
+		int $gapCount = 0;
+        foreach ($this->getClones() as $clone) {
+			$gapCount += $clone->gapCount();
 		}
-		return gapCount;
+		return $gapCount;
 	}
 
 	/**
@@ -412,23 +614,49 @@ class CloneClass extends KeyValueStoreBase
 	 * to a clone class in order to allow different clone detection approaches
 	 * to form clone classes for different notions of similarity
 	 */
-	public void add(Clone clone) {
-		boolean cloneIsInOtherClass = clone.getCloneClass() != this
-				&& clone.getCloneClass() != null;
-		if (cloneIsInOtherClass) {
-			clone.getCloneClass().remove(clone);
+    public function add(Clone $clone): void
+    {
+        $cloneIsInOtherClass =
+               $clone->getCloneClass()->hashCode() !== $this->hashCode()
+            && $clone->getCloneClass() !== null;
+		if ($cloneIsInOtherClass) {
+			$clone->getCloneClass()->remove($clone);
 		}
 
-		clones.add(clone);
-		clone.setCloneClass(this);
+		$this->clones[] = $clone;
+		$clone->setCloneClass($this);
 	}
 
 	/** Removes a clone */
-	public void remove(Clone clone) {
-		if (clones.remove(clone)) {
-			clone.setCloneClass(null);
+    public function remove(Clone $clone): void
+    {
+		if ($this->removeClone($clone)) {
+			$clone->setCloneClass(null);
 		}
 	}
+
+    /**
+     * @return bool Returns true if $cloneSearch was removed from clones.
+     */
+    public function removeClone($cloneSearch): bool
+    {
+        $key = $this->findKeyOfClone($cloneSearch);
+        if ($key !== null) {
+            unset($this->clones[$key]);
+            return true;
+        }
+        return false;
+    }
+
+    public function findKeyOfClone(Clone $cloneSearch): ?int
+    {
+        foreach ($this->getClones() as $i => $clone) {
+            if ($clone->equals($cloneSearch)) {
+                return $i;
+            }
+        }
+        return null;
+    }
 }
 
 class MultiplexingCloneClassesCollection {
@@ -580,40 +808,6 @@ class CloneConsumer
 
     /** Return list containing all retained clone classes */
     public List<CloneClass> getCloneClasses() {
-    return results.getCloneClasses();
+        return results.getCloneClasses();
     }
-}
-
-/** Collection that adds {@link CloneClass} to all contained collections */
-private class MultiplexingCloneClassesCollection {
-
-/** Underlying collections */
-private final List<Collection<CloneClass>> collections = new ArrayList<Collection<CloneClass>>();
-
-/** Adds a clone class to all collections */
-public void add(CloneClass cloneClass) {
-for (Collection<CloneClass> collection : collections) {
-    collection.add(cloneClass);
-}
-}
-
-/**
- * Returns a list with all clones in the contained collections. The list
- * is sorted by normalized length and contains no duplicates.
- */
-public List<CloneClass> getCloneClasses() {
-Set<CloneClass> resultSet = new HashSet<CloneClass>();
-
-for (Collection<CloneClass> boundedCollection : collections) {
-    resultSet.addAll(boundedCollection);
-}
-
-return CollectionUtils.sort(resultSet,
-    ECloneClassComparator.NORMALIZED_LENGTH);
-}
-
-/** Add a collection */
-public void addCollection(Collection<CloneClass> collection) {
-collections.add(collection);
-}
 }
