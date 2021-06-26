@@ -1,5 +1,24 @@
 <?php
 
+class IdProvider
+{
+
+    /** Counter used to keep track of used ids */
+    private $idCounter = 0;
+
+    /** Constructor */
+    protected function __construct(int $lowestFreeId = 0) {
+        $this->idCounter = $lowestFreeId;
+    }
+
+    /** Returns next fresh id. */
+    public function provideId(): int
+    {
+        return $this->idCounter++;
+    }
+
+}
+
 /**
  * Base class for locations. Locations are immutable and thus return this at
  * deep cloning.
@@ -10,7 +29,6 @@
  */
 class ElementLocation
 {
-
 	/** Version used for serialization. */
 	private static $serialVersionUID = 1;
 
@@ -194,14 +212,14 @@ class TextRegionLocation extends ElementLocation
 	 */
     public function toLocationString(): string
     {
-		return parent->toLocationString() . ":" . $this->rawStartLine . "-" . $this->rawEndLine;
+		return parent::toLocationString() . ":" . $this->rawStartLine . "-" . $this->rawEndLine;
 	}
 }
 
 class CloneUtils
 {
     /**
-     * @param Clone[]
+     * @param CloneObject[]
      */
     private static function allFingerprintsEqual(array $clones): bool
     {
@@ -216,7 +234,7 @@ class CloneUtils
     }
 
     /**
-     * @param Clone[]
+     * @param CloneObject[]
      */
     public static function createFingerprint(array $clones): string
     {
@@ -296,73 +314,82 @@ abstract class KeyValueStoreBase
 
 }
 
-class Clone extends KeyValueStoreBase
+class CloneObject extends KeyValueStoreBase
 {
     /** {@link CloneClass} this clone belongs to
-        * @param CloneClass */
+     * @var CloneClass */
 	private $cloneClass;
 
-	/** The location of the clone. */
-	private final TextRegionLocation location;
+    /** The location of the clone.
+     * @var TextRegionLocation */
+	private $location;
 
-	/** Fingerprint of clone */
-	private final String fingerprint;
+    /** Fingerprint of clone
+     * @var string */
+	private $fingerprint;
 
-	/** Position of the first unit of the clone in its element */
-	private final int startUnitIndexInElement;
+    /** Position of the first unit of the clone in its element
+     * @var int */
+	private $startUnitIndexInElement;
 
-	/** Length of the clone in units */
-	private final int lengthInUnits;
+    /** Length of the clone in units
+     * @var int */
+	private $lengthInUnits;
 
 	/**
 	 * The gaps in the clone stored as region of raw offsets (absolute in
 	 * element).
+     *
+     * @var ?Region[]
 	 */
-	private List<Region> gaps;
+	private $gaps = null;
 
-	/** Delta size in units */
-	protected int deltaInUnits;
+    /** Delta size in units
+     * @var int */
+	protected $deltaInUnits;
 
 	/** Creates a clone with a delta in units of 0 */
+    /*
 	public Clone(long id, CloneClass cloneClass, TextRegionLocation location,
 			int startUnitIndexInElement, int lengthInUnits, String fingerprint) {
 		this(id, cloneClass, location, startUnitIndexInElement, lengthInUnits,
 				fingerprint, 0);
 	}
+     */
 
 	/**
-	 * Constructor
-	 * 
-	 * @param cloneClass
-	 *            this may be null to explicitly create a clone instance without
-	 *            clone class.
+	 * @param CloneClass $cloneClass this may be null to explicitly create a clone instance without clone class.
 	 */
-	public Clone(long id, CloneClass cloneClass, TextRegionLocation location,
-			int startUnitIndexInElement, int lengthInUnits, String fingerprint,
-			int deltaInUnits) {
-		super(id);
+    public function __construct(
+        int $id,
+        CloneClass $cloneClass,
+        TextRegionLocation $location,
+        int $startUnitIndexInElement,
+        int $lengthInUnits,
+        string $fingerprint,
+        int $deltaInUnits
+    ) {
+        parent::__construct($id);
 
-		CCSMAssert.isNotNull(location);
+        assert($location !== null);
 
-		this.cloneClass = cloneClass;
+		$this->cloneClass = $cloneClass;
 
 		// We use the Java string pool here for because:
 		// - during clone detection, many clones can be created
 		// - all fingerprints of non-gapped clones in same clone class are equal
 		// (but created as different instances)
-		this.fingerprint = fingerprint.intern();
+		$this->fingerprint = $fingerprint->intern();
 
-		this.location = location;
-		this.startUnitIndexInElement = startUnitIndexInElement;
-		this.lengthInUnits = lengthInUnits;
-		this.deltaInUnits = deltaInUnits;
+		$this->location = $location;
+		$this->startUnitIndexInElement = $startUnitIndexInElement;
+		$this->lengthInUnits = $lengthInUnits;
+		$this->deltaInUnits = $deltaInUnits;
 
-		CCSMPre.isTrue(
-				location.getRawEndOffset() >= location.getRawStartOffset(),
-				"Length must not be negative: " + this);
+        assert($location->getRawEndOffset() >= $location->getRawStartOffset(), "Length must not be negative: " . (string) $this);
 
-		if (cloneClass != null) {
-			cloneClass.add(this);
+		if ($cloneClass !== null) {
+			$cloneClass->add($this);
 		}
 	}
 
@@ -370,35 +397,36 @@ class Clone extends KeyValueStoreBase
 	 * Two clones are considered equal, if they describe the same region of code
 	 * in the same element with the same gaps.
 	 */
-	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof Clone)) {
+    public function equals(object $obj): bool
+    {
+		if (!(!$obj instanceof CloneObject)) {
 			return false;
 		}
 
-		Clone other = (Clone) obj;
+		$other = $obj;
 
 		// compare source
-		if (!location.getUniformPath().equals(other.location.getUniformPath())) {
+		if (!$location->getUniformPath()->equals($other->location->getUniformPath())) {
 			return false;
 		}
 
 		// compare start units
-		if (getStartUnitIndexInElement() != other.getStartUnitIndexInElement()) {
+		if ($this->getStartUnitIndexInElement() !== $other->getStartUnitIndexInElement()) {
 			return false;
 		}
 
 		// compare length in units
-		if (getLastUnitInElement() != other.getLastUnitInElement()) {
+		if ($this->getLastUnitInElement() != $other->getLastUnitInElement()) {
 			return false;
 		}
 
 		// compare gaps
-		if (gapCount() != other.gapCount()) {
+		if ($this->gapCount() !== $other->gapCount()) {
 			return false;
 		}
-		for (int i = 0; i < gapCount(); ++i) {
-			if (!gaps.get(i).equalsStartEnd(other.gaps.get(i))) {
+
+		for ($i = 0; $i < $this->gapCount(); ++$i) {
+			if (!$this->gaps[$i]->equalsStartEnd($other->gaps[$i])) {
 				return false;
 			}
 		}
@@ -411,15 +439,15 @@ class Clone extends KeyValueStoreBase
 	 * Returns the hash code based on the uniform path, the start and length.
 	 * Gap information is ignored.
 	 */
-	@Override
-	public int hashCode() {
-		return (location.getUniformPath().hashCode() * 13 + getStartUnitIndexInElement())
-				* 17 + getLengthInUnits();
+    public function hashCode(): int
+    {
+		return ($location->getUniformPath()->hashCode() * 13 + $this->getStartUnitIndexInElement()) * 17 + $this->getLengthInUnits();
 	}
 
 	/** {@link CloneClass} this clone belongs to */
-	public CloneClass getCloneClass() {
-		return cloneClass;
+    public function getCloneClass(): CloneClass
+    {
+		return $this->cloneClass;
 	}
 
 	/**
@@ -427,82 +455,97 @@ class Clone extends KeyValueStoreBase
 	 * cloned code after normalization. All ungapped clones inside a single
 	 * clone class have the same fingerprint.
 	 */
-	public String getFingerprint() {
-		return fingerprint;
+    public function getFingerprint(): string
+    {
+		return $this->fingerprint;
 	}
 
 	/** Position of the first unit of the clone in its element */
-	public int getStartUnitIndexInElement() {
-		return startUnitIndexInElement;
+    public function getStartUnitIndexInElement(): int
+    {
+		return $this->startUnitIndexInElement;
 	}
 
 	/** Length of the clone in units. */
-	public int getLengthInUnits() {
-		return lengthInUnits;
+    public function getLengthInUnits(): int
+    {
+		return $this->lengthInUnits;
 	}
 
 	/** Position of the last unit of the clone in its element */
-	public int getLastUnitInElement() {
-		return getStartUnitIndexInElement() + getLengthInUnits() - 1;
+    public function getLastUnitInElement(): int
+    {
+		return $this->getStartUnitIndexInElement() + $this->getLengthInUnits() - 1;
 	}
 
 	/** Edit distance to first clone in clone class */
-	public int getDeltaInUnits() {
-		return deltaInUnits;
+    public function getDeltaInUnits(): int
+    {
+		return $this->deltaInUnits;
 	}
 
 	/** Returns the clone's location. */
-	public TextRegionLocation getLocation() {
-		return location;
+    public function getLocation(): TextRegionLocation
+    {
+		return $this->location;
 	}
 
 	/** Returns the uniform path of this clone's location. */
-	public String getUniformPath() {
-		return location.getUniformPath();
+    public function getUniformPath(): string
+    {
+		return $this->location->getUniformPath();
 	}
 
 	/** Determines whether the clone contains gaps */
-	public boolean containsGaps() {
-		return gaps != null && gaps.size() > 0;
+    public function containsGaps(): bool
+    {
+		return $this->gaps !== null && count($this->gaps) > 0;
 	}
 
 	/** Return number of gaps, or 0, if clone has no gaps */
-	public int gapCount() {
-		if (gaps == null) {
+    public function gapCount(): int
+    {
+		if ($this->gaps === null) {
 			return 0;
 		}
-		return gaps.size();
+		return count($this->gaps);
 	}
 
 	/**
 	 * Returns a list of the gap positions as raw start end offsets (absolute
 	 * offsets in the element), or empty list, if clone has no gaps.
+     *
+     * @return Region[]
 	 */
-	public UnmodifiableList<Region> getGapPositions() {
-		if (gaps == null) {
-			return CollectionUtils.emptyList();
+	public function getGapPositions(): array {
+		if ($this->gaps === null) {
+			return [];
 		}
 
-		return CollectionUtils.asSortedUnmodifiableList(gaps);
+        $list = $this->gaps;
+        asort($list);
+		return $list;
 	}
 
 	/** Adds a gap position. */
-	public void addGap(Region gapRegion) {
-		if (gaps == null) {
-			gaps = new ArrayList<Region>();
+    public function addGap(Region $gapRegion): void
+    {
+		if ($this->gaps === null) {
+			$this->gaps = [];
 		}
-		gaps.add(gapRegion);
+		$this->gaps[] = $gapRegion;
 	}
 
 	/** Set delta size in units */
-	public void setDeltaInUnits(int deltaInUnits) {
-		this.deltaInUnits = deltaInUnits;
+    public function setDeltaInUnits(int $deltaInUnits): void
+    {
+		$this->this->deltaInUnits = $deltaInUnits;
 	}
 
 	/** String representation of the essential clone data. */
-	@Override
-	public String toString() {
-		return "Clone [" + location.toLocationString() + "]";
+    public function __toString(): string
+    {
+		return "Clone [" . $this->location->toLocationString() . "]";
 	}
 
 	/** Sets the clone class. Only called from CloneClass. */
@@ -557,7 +600,7 @@ class CloneClass extends KeyValueStoreBase
 	}
 
     /** Returns the clones of this clone class.
-        * @return Clone[] */
+        * @return CloneObject[] */
     public function getClones(): array
     {
 		return $this->clones;
@@ -582,7 +625,7 @@ class CloneClass extends KeyValueStoreBase
 	/** Returns hash code of fingerprint */
     public function hashCode(): int
     {
-		return md5($this->getFingerprint());
+		return crc32($this->getFingerprint());
 	}
 
 	/** Returns the number of gaps in the clone with the most gaps */
@@ -600,7 +643,7 @@ class CloneClass extends KeyValueStoreBase
 	/** Returns sum of gaps contained in all clones */
     public function getGapCount(): int
     {
-		int $gapCount = 0;
+		$gapCount = 0;
         foreach ($this->getClones() as $clone) {
 			$gapCount += $clone->gapCount();
 		}
@@ -614,7 +657,7 @@ class CloneClass extends KeyValueStoreBase
 	 * to a clone class in order to allow different clone detection approaches
 	 * to form clone classes for different notions of similarity
 	 */
-    public function add(Clone $clone): void
+    public function add(CloneObject $clone): void
     {
         $cloneIsInOtherClass =
                $clone->getCloneClass()->hashCode() !== $this->hashCode()
@@ -628,7 +671,7 @@ class CloneClass extends KeyValueStoreBase
 	}
 
 	/** Removes a clone */
-    public function remove(Clone $clone): void
+    public function remove(CloneObject $clone): void
     {
 		if ($this->removeClone($clone)) {
 			$clone->setCloneClass(null);
@@ -648,7 +691,7 @@ class CloneClass extends KeyValueStoreBase
         return false;
     }
 
-    public function findKeyOfClone(Clone $cloneSearch): ?int
+    public function findKeyOfClone(CloneObject $cloneSearch): ?int
     {
         foreach ($this->getClones() as $i => $clone) {
             if ($clone->equals($cloneSearch)) {
@@ -659,155 +702,208 @@ class CloneClass extends KeyValueStoreBase
     }
 }
 
-class MultiplexingCloneClassesCollection {
+class MultiplexingCloneClassesCollection
+{
+    //private final List<Collection<CloneClass>> collections = new ArrayList<Collection<CloneClass>>();
+    /** Underlying collections
+     * @var SplPriorityQueue[]
+     */
+    private $collections = [];
 
-    /** Underlying collections */
-    private final List<Collection<CloneClass>> collections = new ArrayList<Collection<CloneClass>>();
+    public function __construct()
+    {
+    }
 
     /** Adds a clone class to all collections */
-    public void add(CloneClass cloneClass) {
-    for (Collection<CloneClass> collection : collections) {
-        collection.add(cloneClass);
-    }
+    public function add(CloneClass $cloneClass): void
+    {
+        //for (Collection<CloneClass> collection : collections) {
+        foreach ($collections as $collection) {
+            $collection->insert($cloneClass, 1);
+        }
     }
 
     /**
      * Returns a list with all clones in the contained collections. The list
      * is sorted by normalized length and contains no duplicates.
+     * @return CloneClass[]
      */
-    public List<CloneClass> getCloneClasses() {
-    Set<CloneClass> resultSet = new HashSet<CloneClass>();
+    public function getCloneClasses(): array
+    {
+        /** @var CloneClass[] */
+        $resultSet = [];
 
-    for (Collection<CloneClass> boundedCollection : collections) {
-        resultSet.addAll(boundedCollection);
-    }
+        foreach ($collections as $boundedCollection) {
+            foreach ($boundedCollection as $item) {
+                $resultSet[] = $item;
+            }
+        }
 
-    return CollectionUtils.sort(resultSet,
-        ECloneClassComparator.NORMALIZED_LENGTH);
+        asort($resultSet);
+        // TODO: Sort by length
+        //return CollectionUtils.sort(resultSet, ECloneClassComparator.NORMALIZED_LENGTH);
+        return $resultSet;
     }
 
     /** Add a collection */
-    public void addCollection(Collection<CloneClass> collection) {
-    collections.add(collection);
+    public function addCollection(SplPriorityQueue $collection): void
+    {
+        $this->collections[] = $collection;
     }
 }
 
 class CloneConsumer
 {
+    /** List in which the created clone classes are stored
+     * @var MultiplexingCloneClassesCollection */
+    private $results;
 
-    /** List in which the created clone classes are stored */
-    private final MultiplexingCloneClassesCollection results = new MultiplexingCloneClassesCollection();
+    /** @var IdProvider */
+    private $idProvider;
+
+    /** @var int */
+    private $top = PHP_INT_MAX;
+
+    /** @var Unit[] */
+    private $units = [];
+
+    /** @var array<string, ITextElement> */
+	private $uniformPathToElement = [];
+
+	/** List of constraints that all detected clone classes must satisfy */
+	//private ConstraintList constraints = new ConstraintList();
+
+    /** {@link CloneClass} currently being filled
+        * @var CloneClass */
+    protected $currentCloneClass;
 
     /**
      * Creates a ICloneConsumer that writes the {@link CloneClass}es it
      * creates into the given set
      */
-    public CloneConsumer() {
-    if (top == INFINITE) {
-        results.addCollection(new ArrayList<CloneClass>());
-    } else {
-        results.addCollection(boundedCollection(NORMALIZED_LENGTH));
-        results.addCollection(boundedCollection(CARDINALITY));
-        results.addCollection(boundedCollection(VOLUME));
-    }
+    public function __construct()
+    {
+        $this->results = new MultiplexingCloneClassesCollection();
+        $this->idProvider = new IdProvider();
+
+        if ($this->top === PHP_INT_MAX) {
+            $this->results->addCollection([]);
+        } else {
+            //$this->results->addCollection($this->boundedCollection(NORMALIZED_LENGTH));
+            //$this->results->addCollection($this->boundedCollection(CARDINALITY));
+            //$this->results->addCollection($this->boundedCollection(VOLUME));
+            $this->results->addCollection($this->boundedCollection());
+            $this->results->addCollection($this->boundedCollection());
+            $this->results->addCollection($this->boundedCollection());
+        }
     }
 
-    /** Creates {@link BoundedPriorityQueue} */
-    private BoundedPriorityQueue<CloneClass> boundedCollection(
-        ECloneClassComparator dimension) {
-        return new BoundedPriorityQueue<CloneClass>(top, dimension);
+    /** Creates {@link BoundedPriorityQueue}
+        * @return CloneClass[] */
+    //private function boundedCollection(ECloneClassComparator $dimension): array
+    private function boundedCollection(): SplPriorityQueue
+    {
+        return new SplPriorityQueue();
+        //return new BoundedPriorityQueue<CloneClass>(top, dimension);
     }
-
-    /** {@link CloneClass} currently being filled */
-    protected CloneClass currentCloneClass;
 
     /** Start new clone class */
-    @Override
-        public void startCloneClass(int normalizedLength) {
-        currentCloneClass = new CloneClass(normalizedLength,
-            idProvider.provideId());
+    public function startCloneClass(int $normalizedLength): void
+    {
+        $this->currentCloneClass = new CloneClass($normalizedLength, $this->idProvider->provideId());
     }
 
     /** Adds a clone to the current {@link CloneClass} */
-    @Override
-        public Clone addClone(int globalPosition, int length)
-        throws ConQATException {
+    public function addClone(int $globalPosition, int $length): CloneObject
+    {
         // compute length of clone in lines
-        Unit firstUnit = units.get(globalPosition);
-        Unit lastUnit = units.get(globalPosition + length - 1);
-        List<Unit> cloneUnits = units.subList(globalPosition,
-            globalPosition + length);
+        $firstUnit = $this->units[globalPosition];
+        $lastUnit = $this->units[globalPosition + length - 1];
+        /** @var Unit[] */
+        $cloneUnits = array_slice($this->units, $globalPosition, $globalPosition + $length);
 
-        ITextElement element = resolveElement(firstUnit
-            .getElementUniformPath());
-        int startUnitIndexInElement = firstUnit.getIndexInElement();
-        int endUnitIndexInElement = lastUnit.getIndexInElement();
-        int lengthInUnits = endUnitIndexInElement - startUnitIndexInElement
-            + 1;
-        CCSMAssert.isTrue(lengthInUnits >= 0, "Negative length in units!");
-        String fingerprint = createFingerprint(globalPosition, length);
+        $element = $this->resolveElement($firstUnit->getElementUniformPath());
+        $startUnitIndexInElement = $firstUnit->getIndexInElement();
+        $endUnitIndexInElement = $lastUnit->getIndexInElement();
+        $lengthInUnits = $endUnitIndexInElement - $startUnitIndexInElement + 1;
+        assert($lengthInUnits >= 0, "Negative length in units!");
+        $fingerprint = $this->createFingerprint($globalPosition, $length);
 
-        Clone clone = new Clone(idProvider.provideId(), currentCloneClass,
-            createCloneLocation(element,
-            firstUnit.getFilteredStartOffset(),
-            lastUnit.getFilteredEndOffset()),
-            startUnitIndexInElement, lengthInUnits, fingerprint);
+        $cloneObject = new CloneObject(
+            $this->idProvider->provideId(),
+            $this->currentCloneClass,
+            $this->createCloneLocation(
+                $element,
+                $firstUnit.getFilteredStartOffset(),
+                $lastUnit.getFilteredEndOffset()
+            ),
+            $this->startUnitIndexInElement,
+            $this->lengthInUnits,
+            $fingerprint
+        );
 
-        if (storeUnits) {
-            CloneUtils.setUnits(clone, cloneUnits);
-        }
+        //if ($storeUnits) {
+            //CloneUtils::setUnits($cloneObject, $cloneUnits);
+        //}
 
-        currentCloneClass.add(clone);
+        $this->currentCloneClass->add($cloneObject);
 
-        return clone;
+        return cloneObject;
     }
 
-    /** Creates the location for a clone. */
-    private TextRegionLocation createCloneLocation(ITextElement element,
-        int filteredStartOffset, int filteredEndOffset)
-        throws ConQATException {
-        int rawStartOffset = element
-            .getUnfilteredOffset(filteredStartOffset);
-        int rawEndOffset = element.getUnfilteredOffset(filteredEndOffset);
-        int rawStartLine = element
-            .convertUnfilteredOffsetToLine(rawStartOffset);
-        int rawEndLine = element
-            .convertUnfilteredOffsetToLine(rawEndOffset);
+    /** Creates the location for a cloneObject. */
+    private function createCloneLocation(
+        ITextElement $element,
+        int $filteredStartOffset,
+        int $filteredEndOffset
+    ): TextRegionLocation {
+        $rawStartOffset = $element->getUnfilteredOffset($filteredStartOffset);
+        $rawEndOffset   = $element->getUnfilteredOffset($filteredEndOffset);
+        $rawStartLine   = $element->convertUnfilteredOffsetToLine($rawStartOffset);
+        $rawEndLine     = $element->convertUnfilteredOffsetToLine($rawEndOffset);
 
-        return new TextRegionLocation(element.getLocation(),
-            element.getUniformPath(), rawStartOffset, rawEndOffset,
-            rawStartLine, rawEndLine);
+        return new TextRegionLocation(
+            $element->getLocation(),
+            $element->getUniformPath(),
+            $rawStartOffset,
+            $rawEndOffset,
+            $rawStartLine,
+            $rawEndLine
+        );
     }
 
     /** Determine element for unit */
-    protected ITextElement resolveElement(String elementUniformPath) {
-    return uniformPathToElement.get(elementUniformPath);
+    protected function resolveElement(string $elementUniformPath): ITextElement
+    {
+        return $uniformPathToElement[$elementUniformPath];
     }
 
-    /** Create fingerprint for current clone */
-    protected String createFingerprint(int globalPosition, int length) {
-    StringBuilder fingerprintBase = new StringBuilder();
-    for (int pos = globalPosition; pos < globalPosition + length; pos++) {
-        fingerprintBase.append(units.get(pos).getContent());
-    }
-    return Digester.createMD5Digest(fingerprintBase.toString());
+    /** Create fingerprint for current cloneObject */
+    protected function createFingerprint(int $globalPosition, int $length): string
+    {
+        $fingerprintBase = '';
+        for ($pos = $globalPosition; $pos < $globalPosition + $length; $pos++) {
+            $fingerprintBase .= $this->units[$pos]->getContent();
+        }
+        return md5($fingerprintBase);
     }
 
     /** Check constraints */
-    @Override
-        public boolean completeCloneClass() throws ConQATException {
-        boolean constraintsSatisfied = constraints
-            .allSatisfied(currentCloneClass);
-
-        if (constraintsSatisfied) {
-            results.add(currentCloneClass);
-        }
-
-        return constraintsSatisfied;
+    public function completeCloneClass(): bool
+    {
+        // TODO: Lots of different constraint classes to port. Use-case?
+        //$constraintsSatisfied = constraints.allSatisfied(currentCloneClass);
+        //if (constraintsSatisfied) {
+            //results.add(currentCloneClass);
+        //}
+        //return constraintsSatisfied;
+        return true;
     }
 
-    /** Return list containing all retained clone classes */
-    public List<CloneClass> getCloneClasses() {
-        return results.getCloneClasses();
+    /** Return list containing all retained cloneObject classes
+        * @var CloneClass[] */
+    public function getCloneClasses(): array
+    {
+        return $this->results->getCloneClasses();
     }
 }
