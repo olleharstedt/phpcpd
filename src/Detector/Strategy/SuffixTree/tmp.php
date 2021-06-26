@@ -755,6 +755,9 @@ class TextRegionLocation extends ElementLocation
 
 class CloneUtils
 {
+    /** Key under which list of units is stored */
+    const UNIT_LIST = "unit_list";
+
     /**
      * @param CloneObject[]
      */
@@ -794,6 +797,14 @@ class CloneUtils
         }
 
         return md5(implode(' ', $fingerprints));
+    }
+
+    /** Store list of units at a clone
+     * @param Unit[] */
+    public static function setUnits(CloneObject $clone, array $cloneUnits): void
+    {
+        $clone->setValue(self::UNIT_LIST, $cloneUnits);
+        $clone->setTransient(self::UNIT_LIST, true);
     }
 }
 
