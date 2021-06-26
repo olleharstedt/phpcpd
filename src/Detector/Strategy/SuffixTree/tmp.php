@@ -332,7 +332,8 @@ class Delta
 					}
 				}
 				$y = $x - $k;
-				while ($x < $this->n && $y < $this->m && $this->equator->equals($this->a[$x], $this->b[$y])) {
+				//while ($x < $this->n && $y < $this->m && $this->equator->equals($this->a[$x], $this->b[$y])) {
+				while ($x < $this->n && $y < $this->m && $this->a[$x] === $this->b[$y]) {
 					++$x;
 					++$y;
 				}
