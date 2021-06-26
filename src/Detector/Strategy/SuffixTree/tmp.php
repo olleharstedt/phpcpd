@@ -1,4 +1,198 @@
-<?php
+<?php declare(strict_types=1);
+/*
+ * This file is part of PHP Copy/Paste Detector (PHPCPD).
+ *
+ * (c) Sebastian Bergmann <sebastian@phpunit.de>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+namespace SebastianBergmann\PHPCPD\Detector\Strategy\SuffixTree;
+
+class SimpleRegion
+{
+	/** Version for serialization. */
+	private static $serialVersionUID = 1;
+
+    /** Region start position (inclusive).
+        * @var int */
+	private final $start;
+
+    /** Region end position (inclusive).
+        * @var int */
+	private final $end;
+
+	/** Constructor. */
+    public function __construct(int $start, int $end)
+    {
+		$this->start = $start;
+		$this->end = $end;
+	}
+
+	/** Checks if the region contains a position */
+    public function containsPosition(int $position): bool
+    {
+		return $this->start <= $position && $this->end >= $position;
+	}
+
+	/** Checks if two regions are overlapping */
+    public function overlaps(SimpleRegion $r): bool
+    {
+		// Region with smaller start value performs overlap check
+		if ($r->start < $this->start) {
+			return $r->overlaps($this->this);
+		}
+
+		return $start <= $r->start && $this->end >= $r->start;
+	}
+
+	/** Checks if two regions are adjacent */
+    public function adjacent(SimpleRegion $r): bool
+    {
+		// Region with smaller start value performs adjacency check
+		if ($r->start < $this->start) {
+			return $r->adjacent($this);
+		}
+
+		return $this->end + 1 === $r->start;
+	}
+
+	/**
+	 * Gets the end position of the region. This may be less than start for an
+	 * empty region (see also {@link #isEmpty()}).
+	 */
+    public function getEnd(): int
+    {
+		return $this->end;
+	}
+
+	/** Gets the start position of the region */
+    public function getStart(): int
+    {
+		return $this->start;
+	}
+
+	/**
+	 * Gets the length of the region. Empty regions have a length of 0.
+	 */
+    public function getLength(): int
+    {
+		if ($this->isEmpty()) {
+			return 0;
+		}
+		return $this->end - $this->start + 1;
+	}
+
+	/** Returns whether this region is empty. */
+    public function isEmpty(): bool
+    {
+		return $this->end < $this->start;
+	}
+
+    public function __toString(): string
+    {
+		return "[" + $this->start + "-" + $this->end + "]";
+	}
+
+	/** Compares regions by their start position */
+    public function compareTo(SimpleRegion $other): int
+    {
+		return $this->start <=> $other->start;
+	}
+
+	/**
+	 * Returns whether start and end of the region is the same as for this
+	 * region.
+	 */
+    public function equalsStartEnd(SimpleRegion $other): bool
+    {
+		return $this->start == $other->start && $this->end == $other->end;
+	}
+}
+
+final class Region extends SimpleRegion
+{
+	/** Version for serialization. */
+	private static $serialVersionUID = 1;
+
+	/** Name that is used if region is created without name */
+	public static $UNKNOWN_ORIGIN = "Unknown origin";
+
+	/**
+	 * Origin of the region. Can be used to store information about who created
+	 * the region.
+     * @var string
+	 */
+	private final $origin;
+
+	/**
+	 * Creates a region with an origin. An empty region can be denoted with and
+	 * end position smaller than start.
+	 * 
+	 * @param int $start Start position of the region
+	 * @param int $end End position of the region
+	 * @param strgin $origin Region origin. (i.e. region producer)
+	 */
+    public function __construct(int $start, int $end, string $origin = null)
+    {
+        parent::__construct($start, $end);
+		$this->origin = $origin;
+	}
+
+	/** Get origin. */
+	public function getOrigin(): string {
+		return $this->origin;
+	}
+}
+
+interface ICloneClassConstraint
+{
+	/** Returns true, if constraint is satisfied, false if not */
+	public function satisfied(CloneClass $cloneClass): bool;
+}
+
+abstract class ConstraintBase implements ICloneClassConstraint
+{
+    public function process(): self
+    {
+		return $this;
+	}
+
+	/**
+	 * Template method that deriving classes can override to perform
+	 * initialization
+	 */
+    protected function setup(): void
+    {
+		// Empty default implementation
+	}
+}
+
+class CardinalityConstraint extends ConstraintBase
+{
+	/** Constant used to denote infinity */
+	public static $INFINITY = -1;
+
+	/** Maximal number of required clones */
+	private $max = self::INFINITY;
+
+	/** Minimal number of required clones */
+	private $min;
+
+	//@AConQATParameter(name = "cardinality", minOccurrences = 1, maxOccurrences = 1, description = "Cardinality thresholds")
+	public function setCardinality($min, $max): void
+    {
+		$this->min = $min;
+		$this->max = $max;
+	}
+
+    public function satisfied(CloneClass $cloneClass): bool
+    {
+		$size = count($cloneClass->getClones());
+		return $size >= min && (max === self::INFINITY || $size <= max);
+	}
+
+}
 
 class IdProvider
 {
@@ -767,7 +961,7 @@ class CloneConsumer
     /** @var Unit[] */
     private $units = [];
 
-    /** @var array<string, ITextElement> */
+    /** @var array<string, TextRegionLocation> */
 	private $uniformPathToElement = [];
 
 	/** List of constraints that all detected clone classes must satisfy */
@@ -853,7 +1047,7 @@ class CloneConsumer
 
     /** Creates the location for a cloneObject. */
     private function createCloneLocation(
-        ITextElement $element,
+        TextRegionLocation $element,
         int $filteredStartOffset,
         int $filteredEndOffset
     ): TextRegionLocation {
@@ -873,9 +1067,9 @@ class CloneConsumer
     }
 
     /** Determine element for unit */
-    protected function resolveElement(string $elementUniformPath): ITextElement
+    protected function resolveElement(string $elementUniformPath): TextRegionLocation
     {
-        return $uniformPathToElement[$elementUniformPath];
+        return $this->uniformPathToElement[$elementUniformPath];
     }
 
     /** Create fingerprint for current cloneObject */
@@ -905,5 +1099,82 @@ class CloneConsumer
     public function getCloneClasses(): array
     {
         return $this->results->getCloneClasses();
+    }
+}
+
+class GapDetectingCloneConsumer extends CloneConsumer
+{
+
+    /** The first clone of the clone class.
+        * @var CloneObject */
+    private $firstClone = null;
+
+    /** The position of the first clone. */
+    private $firstPos = 0;
+
+    /** The length of the first clone. */
+    private $firstLength = 0;
+
+    /** Constructor. */
+    private function __construct()
+    {
+        parent::__construct();
+    }
+
+    public function startCloneClass(int $normalizedLength): void
+    {
+        parent::startCloneClass($normalizedLength);
+        $this->firstClone = null;
+    }
+
+    public function addClone(int $globalPosition, int $length): CloneObject
+    {
+        // get clone without gap information
+        /** @var CloneObject */
+        $clone = parent::addClone($globalPosition, $length);
+
+        Delta<Unit> delta = Diff.computeDelta(
+            units.subList(firstPos, firstPos + firstLength),
+            units.subList(globalPosition, globalPosition + length)
+        );
+
+        if ($firstClone !== null) {
+            $clone->setDeltaInUnits(delta.getSize());
+            $element = $this->resolveElement(clone.getUniformPath());
+            $this->fillGaps(clone, delta, globalPosition, element);
+        } else {
+            $clone.setDeltaInUnits(0);
+            firstClone = clone;
+            firstPos = globalPosition;
+            firstLength = length;
+        }
+
+        return clone;
+    }
+
+    private function fillGaps(CloneObject $clone, Delta<Unit> delta, int globalPosition, ITextElement element): void
+    {
+        $firstNeedsGaps = !firstClone.containsGaps();
+
+        for (int i = 0; i < delta.getSize(); ++i) {
+            $pos = delta.getPosition(i);
+            if ($pos > 0) {
+                $pos--;
+                Unit unit = units.get(globalPosition + $pos);
+                int rawStartOffset = element.getUnfilteredOffset(unit
+                    .getFilteredStartOffset());
+                int rawEndOffset = element.getUnfilteredOffset(unit
+                    .getFilteredEndOffset());
+                $clone->addGap(new Region(rawStartOffset, rawEndOffset));
+            } else if ($firstNeedsGaps) {
+                $pos = -$pos - 1;
+                Unit unit = units.get(firstPos + $pos);
+                int rawStartOffset = element.getUnfilteredOffset(unit
+                    .getFilteredStartOffset());
+                int rawEndOffset = element.getUnfilteredOffset(unit
+                    .getFilteredEndOffset());
+                firstClone.addGap(new Region(rawStartOffset, rawEndOffset));
+            }
+        }
     }
 }
