@@ -31,6 +31,12 @@ class Delta
     /** The maximal possible difference between {@link #a} and {@link #b}. */
     private $max;
 
+    /**
+     * Maximal size of the delta produced. If the "real" delta would be larger,
+     * a truncated delta will be created.
+     */
+    private $maxDeltaSize = 0;
+
 	/**
 	 * This array stores the position at which a string is changed. If it is
 	 * positive, it indicates an addition (i.e. the position is for the
@@ -124,13 +130,19 @@ class Delta
 		return $delta;
 	}
 
-
+    /**
+     * Calculates the size of the delta (i.e. the number of additions and
+     * deletions. Additionally the {@link #v} and {@link #from} arrays are
+     * filled.
+     */
 	private function calculateDeltaSize(): int
     {
 		$size = -1;
 		for ($d = 0; $size < 0 && $d <= max; ++$d) {
-			$this->v[$d] = new int[2 * $d + 1];
-			$this->from[$d] = new boolean[2 * $d + 1];
+			//$this->v[$d] = new int[2 * $d + 1];
+			//$this->from[$d] = new boolean[2 * $d + 1];
+			$this->v[$d] = [];
+			$this->from[$d] = [];
 
 			$bestSum = -1;
 			for ($k = -$d; $k <= $d; $k += 2) {
@@ -355,7 +367,6 @@ class CardinalityConstraint extends ConstraintBase
 
 class IdProvider
 {
-
     /** Counter used to keep track of used ids */
     private $idCounter = 0;
 
@@ -369,7 +380,6 @@ class IdProvider
     {
         return $this->idCounter++;
     }
-
 }
 
 /**
