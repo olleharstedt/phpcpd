@@ -46,7 +46,7 @@ class Delta
 	 * compensated for).
      * @var int[]
 	 */
-	private $position = []
+	private $position = [];
 
 	/**
 	 * This array stores the characters which are added or deleted
@@ -82,7 +82,7 @@ class Delta
      * @param T[] $b
      * @return Delta<T>
      */
-    public static function computeDelta(array $a, array $b): self
+    public static function computeDeltaStatic(array $a, array $b): self
     {
         $delta = new Delta($a, $b);
         return $this->computeDelta();
@@ -91,6 +91,15 @@ class Delta
     private function computeDelta(): int
     {
         return $this->constructDelta($this->calculateDeltaSize());
+    }
+
+    /**
+     * Returns the size of the delta, i.e. the number of additions and
+     * deletions.
+     */
+    public function getSize(): int
+    {
+        return count($this->position);
     }
 
 	/** Constructs the actual delta. */
@@ -187,11 +196,11 @@ class SimpleRegion
 
     /** Region start position (inclusive).
         * @var int */
-	private final $start;
+	private $start;
 
     /** Region end position (inclusive).
         * @var int */
-	private final $end;
+	private $end;
 
 	/** Constructor. */
     public function __construct(int $start, int $end)
@@ -294,7 +303,7 @@ final class Region extends SimpleRegion
 	 * the region.
      * @var string
 	 */
-	private final $origin;
+	private $origin;
 
 	/**
 	 * Creates a region with an origin. An empty region can be denoted with and
@@ -1302,51 +1311,47 @@ class GapDetectingCloneConsumer extends CloneConsumer
         /** @var CloneObject */
         $clone = parent::addClone($globalPosition, $length);
 
-        // Delta
-        // getSize
-        // getPosition
-        // computeDelta
-        Delta<Unit> delta = Diff.computeDelta(
-            units.subList(firstPos, firstPos + firstLength),
-            units.subList(globalPosition, globalPosition + length)
+        $delta = Delta::computeDeltaStatic(
+            array_slice($this->units, $this->firstPos, $this->firstPos + $this->firstLength),
+            array_slice($this->units, $globalPosition, $globalPosition + length)
         );
 
-        if ($firstClone !== null) {
-            $clone->setDeltaInUnits(delta.getSize());
-            $element = $this->resolveElement(clone.getUniformPath());
-            $this->fillGaps(clone, delta, globalPosition, element);
+        if ($this->firstClone !== null) {
+            $clone->setDeltaInUnits($delta->getSize());
+            $element = $this->resolveElement($clone->getUniformPath());
+            $this->fillGaps($clone, $delta, $globalPosition, $element);
         } else {
             $clone.setDeltaInUnits(0);
-            firstClone = clone;
-            firstPos = globalPosition;
-            firstLength = length;
+            $this->firstClone = $clone;
+            $this->firstPos = $globalPosition;
+            $this->firstLength = $length;
         }
 
-        return clone;
+        return $clone;
     }
 
-    private function fillGaps(CloneObject $clone, Delta<Unit> delta, int globalPosition, ITextElement element): void
+    /**
+     * @param Delta<Unit> $delta
+     */
+    private function fillGaps(CloneObject $clone, Delta $delta, int $globalPosition, TextRegionLocation $element): void
     {
-        $firstNeedsGaps = !firstClone.containsGaps();
+        $firstNeedsGaps = !$this->firstClone.containsGaps();
 
-        for (int i = 0; i < delta.getSize(); ++i) {
-            $pos = delta.getPosition(i);
+        for ($i = 0; $i < $delta->getSize(); ++$i) {
+            $pos = $delta->getPosition($i);
             if ($pos > 0) {
                 $pos--;
-                Unit unit = units.get(globalPosition + $pos);
-                int rawStartOffset = element.getUnfilteredOffset(unit
-                    .getFilteredStartOffset());
-                int rawEndOffset = element.getUnfilteredOffset(unit
-                    .getFilteredEndOffset());
-                $clone->addGap(new Region(rawStartOffset, rawEndOffset));
+                /** @var Unit */
+                $unit = $this->units[$globalPosition + $pos];
+                $rawStartOffset = $element->getUnfilteredOffset($unit.getFilteredStartOffset());
+                $rawEndOffset = $element->getUnfilteredOffset($unit.getFilteredEndOffset());
+                $clone->addGap(new Region($rawStartOffset, $rawEndOffset));
             } else if ($firstNeedsGaps) {
                 $pos = -$pos - 1;
-                Unit unit = units.get(firstPos + $pos);
-                int rawStartOffset = element.getUnfilteredOffset(unit
-                    .getFilteredStartOffset());
-                int rawEndOffset = element.getUnfilteredOffset(unit
-                    .getFilteredEndOffset());
-                firstClone.addGap(new Region(rawStartOffset, rawEndOffset));
+                $unit = $this->units[$this->firstPos + $pos];
+                $rawStartOffset = $element->getUnfilteredOffset($unit.getFilteredStartOffset());
+                $rawEndOffset = $element->getUnfilteredOffset($unit.getFilteredEndOffset());
+                $this->firstClone->addGap(new Region($rawStartOffset, $rawEndOffset));
             }
         }
     }
