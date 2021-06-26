@@ -1390,9 +1390,9 @@ class CloneConsumer
             $fingerprint
         );
 
-        //if ($storeUnits) {
-            //CloneUtils::setUnits($cloneObject, $cloneUnits);
-        //}
+        if ($storeUnits) {
+            CloneUtils::setUnits($cloneObject, $cloneUnits);
+        }
 
         $this->currentCloneClass->add($cloneObject);
 
