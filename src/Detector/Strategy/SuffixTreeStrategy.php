@@ -76,8 +76,8 @@ final class SuffixTreeStrategy extends AbstractStrategy
         assert_options(ASSERT_WARNING, 1);
 
         require_once __DIR__ . '/SuffixTree/tmp.php';
-        //$consumer = new SuffixTree\GapDetectingCloneConsumer($this->word);
-        $consumer = new SuffixTree\CloneConsumer($this->word);
+        $consumer = new SuffixTree\GapDetectingCloneConsumer($this->word);
+        //$consumer = new SuffixTree\CloneConsumer($this->word);
 
         $tree       = new ApproximateCloneDetectingSuffixTree($this->word);
         $cloneInfos = $tree->findClones(
@@ -87,8 +87,8 @@ final class SuffixTreeStrategy extends AbstractStrategy
             $consumer
         );
 
+        /*
         foreach ($cloneInfos as $cloneInfo) {
-            /** @var int[] */
             $others = $cloneInfo->otherClones->extractFirstList();
 
             for ($j = 0; $j < count($others); $j++) {
@@ -111,8 +111,11 @@ final class SuffixTreeStrategy extends AbstractStrategy
                 );
             }
         }
+         */
         $classes = $consumer->getCloneClasses();
-        var_dump($classes);
+        foreach ($classes as $class) {
+            var_dump($class);
+        }
     }
 
     public function setConsumer(CloneConsumer $consumer): void

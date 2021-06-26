@@ -230,7 +230,7 @@ class Delta
      * @param T[] $a
      * @param T[] $b
      */
-    private function __construct(array $a, array $b, int $maxDeltaSize, $equator)
+    private function __construct(array $a, array $b, int $maxDeltaSize = 2, $equator = null)
     {
 		$this->a = $a;
 		$this->b = $b;
@@ -242,8 +242,8 @@ class Delta
 		$this->max = $this->n + $this->m;
 		//$this->v = new int[max + 1][];
 		//$this->from = new boolean[max + 1][];
-		$this->v = [];
-		$this->from = [];
+		$this->v = array_fill(0, $this->max + 1, []);
+		$this->from = array_fill(0, $this->max + 1, null);
 	}
 
 
@@ -255,10 +255,10 @@ class Delta
     public static function computeDeltaStatic(array $a, array $b): self
     {
         $delta = new Delta($a, $b);
-        return $this->computeDelta();
+        return $delta->computeDelta();
     }
 
-    private function computeDelta(): int
+    private function computeDelta(): self
     {
         return $this->constructDelta($this->calculateDeltaSize());
     }
@@ -272,6 +272,21 @@ class Delta
         return count($this->position);
     }
 
+    private static function withSize(int $size, int $n, int $m): Delta
+    {
+        $delta = new self([], []);
+        $delta->n = $n;
+        $delta->m = $m;
+        $delta->position = array_fill(0, $size, 0);
+        $delta->t = array_fill(0, $size, null);
+        return $delta;
+    }
+
+    public function getPosition(int $i): int
+    {
+        return $this->position[$i];
+    }
+
 	/** Constructs the actual delta. */
 	private function constructDelta(int $size): Delta
     {
@@ -281,8 +296,7 @@ class Delta
 			++$k;
 		}
 
-        // TODO: Different contructor
-		$delta = new Delta($size, $this->n, $this->m);
+		$delta = self::withSize($size, $this->n, $this->m);
 
 		$difference = $this->n - $this->m;
 		while ($d > 0) {
@@ -317,11 +331,11 @@ class Delta
 	private function calculateDeltaSize(): int
     {
 		$size = -1;
-		for ($d = 0; $size < 0 && $d <= max; ++$d) {
+		for ($d = 0; $size < 0 && $d <= $this->max; ++$d) {
 			//$this->v[$d] = new int[2 * $d + 1];
 			//$this->from[$d] = new boolean[2 * $d + 1];
-			$this->v[$d] = [];
-			$this->from[$d] = [];
+			$this->v[$d] = array_fill(0, 2 * $d + 1, 0);
+			$this->from[$d] = array_fill(0, 2 * $d + 1, null);
 
 			$bestSum = -1;
 			for ($k = -$d; $k <= $d; $k += 2) {
@@ -525,7 +539,7 @@ class CardinalityConstraint extends ConstraintBase
 	public static $INFINITY = -1;
 
 	/** Maximal number of required clones */
-	private $max = self::INFINITY;
+	private $max = PHP_INT_MAX;
 
 	/** Minimal number of required clones */
 	private $min;
@@ -540,9 +554,54 @@ class CardinalityConstraint extends ConstraintBase
     public function satisfied(CloneClass $cloneClass): bool
     {
 		$size = count($cloneClass->getClones());
-		return $size >= min && (max === self::INFINITY || $size <= max);
+		return $size >= $this->min && ($this->max === self::$INFINITY || $size <= $this->max);
 	}
 
+}
+
+/**
+ * List of clone class constraints.
+ * 
+ * @author juergens
+ * @author $Author: poehlmann $
+ * @version $Rev: 48262 $
+ * @ConQAT.Rating YELLOW Hash: E2EBDFD5096A19B9AE8118B396F65619
+ */
+class ConstraintList
+{
+    /** Version used for serialization.
+     * @var $serialVersionUID */
+	private $serialVersionUID = 1;
+
+    /** @var ConstraintBase[] */
+    private $constraints = [];
+
+	/** Returns true, if the cloneClass satisfies all constraints, false if not */
+    public function allSatisfied(CloneClass $cloneClass): bool
+    {
+		foreach ($this->constraints as $constraint) {
+			if (!$constraint->satisfied($cloneClass)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Returns true, if the cloneClass satisfies one constraint, false if not */
+    public function oneSatisfied(CloneClass $cloneClass): bool
+    {
+		foreach ($this->constraints as $constraint) {
+			if ($constraints->satisfied($cloneClass)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+    public function add(ConstraintBase $constraint): void
+    {
+        $this->constraints[] = $constraint;
+    }
 }
 
 class IdProvider
@@ -1110,7 +1169,7 @@ class CloneObject extends KeyValueStoreBase
 	/** Set delta size in units */
     public function setDeltaInUnits(int $deltaInUnits): void
     {
-		$this->this->deltaInUnits = $deltaInUnits;
+		$this->deltaInUnits = $deltaInUnits;
 	}
 
 	/** String representation of the essential clone data. */
@@ -1289,7 +1348,7 @@ class MultiplexingCloneClassesCollection
     public function add(CloneClass $cloneClass): void
     {
         //for (Collection<CloneClass> collection : collections) {
-        foreach ($collections as $collection) {
+        foreach ($this->collections as $collection) {
             $collection->insert($cloneClass, 1);
         }
     }
@@ -1342,11 +1401,14 @@ class CloneConsumer
     /** @var array<string, TextRegionLocation> */
 	private $uniformPathToElement = [];
 
-	/** List of constraints that all detected clone classes must satisfy */
-	//private ConstraintList constraints = new ConstraintList();
+    /**
+     * List of constraints that all detected clone classes must satisfy
+     * @var ConstraintList
+     */
+	private $constraints;
 
     /** {@link CloneClass} currently being filled
-        * @var CloneClass */
+     * @var CloneClass */
     protected $currentCloneClass;
 
 	/** Flag that determines whether the units are stored in clones */
@@ -1360,6 +1422,8 @@ class CloneConsumer
     {
         $this->results = new MultiplexingCloneClassesCollection();
         $this->idProvider = new IdProvider();
+        $this->constraints = new ConstraintList();
+        $this->constraints->add(new CardinalityConstraint());
         $this->units = $word;
 
         foreach ($word as $token) {
@@ -1485,13 +1549,11 @@ class CloneConsumer
     /** Check constraints */
     public function completeCloneClass(): bool
     {
-        // TODO: Lots of different constraint classes to port. Use-case?
-        //$constraintsSatisfied = constraints.allSatisfied(currentCloneClass);
-        //if (constraintsSatisfied) {
-            //results.add(currentCloneClass);
-        //}
-        //return constraintsSatisfied;
-        return true;
+        $constraintsSatisfied = $this->constraints->allSatisfied($this->currentCloneClass);
+        if ($constraintsSatisfied) {
+            $this->results->add($this->currentCloneClass);
+        }
+        return $constraintsSatisfied;
     }
 
     /** Return list containing all retained cloneObject classes
@@ -1557,7 +1619,7 @@ class GapDetectingCloneConsumer extends CloneConsumer
      */
     private function fillGaps(CloneObject $clone, Delta $delta, int $globalPosition, TextRegionLocation $element): void
     {
-        $firstNeedsGaps = !$this->firstClone.containsGaps();
+        $firstNeedsGaps = !$this->firstClone->containsGaps();
 
         for ($i = 0; $i < $delta->getSize(); ++$i) {
             $pos = $delta->getPosition($i);
