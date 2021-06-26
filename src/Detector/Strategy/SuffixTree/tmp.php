@@ -9,6 +9,170 @@
  */
 namespace SebastianBergmann\PHPCPD\Detector\Strategy\SuffixTree;
 
+/**
+ * Base class for units.
+ * <p>
+ * 
+ * We have observed that in large code bases, the number of different units
+ * after normalization is significantly smaller than the total number of units.
+ * We exploit this observation in order to reduce the memory footprint of the
+ * units by pooling unit content strings. This way, each unit content string is
+ * only kept in memory once, independent of how often it occurs in the source
+ * code. Since Java's {@link String#intern()} facility is too slow for very
+ * large String pools, we use the {@link ConQATStringPool} in the constructor
+ * {@link Unit}.
+ * <p>
+ * <b>Note:</b> The implementation of {@link #hashCode()} and
+ * {@link #equals(Object)} are crucial for the detection algorithm.
+ * 
+ * @author $Author: kinnen $
+ * @version $Rev: 49944 $
+ * @ConQAT.Rating GREEN Hash: A696F6C00D704EEC8BBCB5753A3C98A6
+ */
+abstract class Unit
+{
+
+    /** The uniform path of the element this unit stems from.
+     * @var string */
+	private $elementUniformPath;
+
+    /** The index of the unit in the element
+     * @var int */
+	private $indexInElement;
+
+    /** The content of this unit.
+     * @var string */
+	private $content;
+
+    /** The content of this unit without normalization
+        * @var string */
+	private $unnormalizedContent;
+
+    /** Position of first character in element
+     * @var int */
+	private $filteredStartOffset;
+
+    /** Position of last character in element (inclusive)
+     * @var int */
+	private $filteredEndOffset;
+
+	/** Create a new unit with identical normalized and unnormalized content */
+    /*
+    protected Unit(
+        int filteredStartOffset,
+        int filteredEndOffset,
+        String elementUniformPath,
+        String content,
+        int indexInElement
+    ) {
+		this(filteredStartOffset, filteredEndOffset, elementUniformPath,
+				content, content, indexInElement);
+	}
+     */
+
+	/** Create new unit */
+    protected function __construct(
+        int $filteredStartOffset,
+        int $filteredEndOffset,
+        string $elementUniformPath,
+        string $content,
+        string $unnormalizedContent,
+        int $indexInElement
+    ) {
+		$this->filteredStartOffset = $filteredStartOffset;
+		$this->filteredEndOffset = $filteredEndOffset;
+		$this->elementUniformPath = $elementUniformPath;
+		$this->content = $content;
+		$this->unnormalizedContent = $unnormalizedContent;
+		$this->indexInElement = $indexInElement;
+	}
+
+	/** Returns {@link #elementUniformPath}. */
+    public function getElementUniformPath(): string
+    {
+		return $this->elementUniformPath;
+	}
+
+	/** Returns {@link #filteredStartOffset}. */
+    public function getFilteredStartOffset(): int
+    {
+		return $this->filteredStartOffset;
+	}
+
+	/** Returns {@link #filteredEndOffset}. */
+    public function getFilteredEndOffset(): int
+    {
+		return $this->filteredEndOffset;
+	}
+
+	/** Returns {@link #indexInElement}. */
+    public function getIndexInElement(): int
+    {
+		return $this->indexInElement;
+	}
+
+	/**
+	 * Sets {@link #indexInElement}. This must be changed, e.g., when filtering
+	 * the units list.
+	 */
+    public function setIndexInElement(int $newIndex): void
+    {
+		$this->indexInElement = $newIndex;
+	}
+
+	/** Returns {@link #content}. */
+    public function getContent(): string
+    {
+		return $this->content;
+	}
+
+	/** Returns {@link #unnormalizedContent}. */
+	public function getUnnormalizedContent(): stringa {
+		return $this->unnormalizedContent;
+	}
+
+	/**
+	 * The hash code of a unit object is identical to the hash code of its
+	 * content string.
+	 * 
+	 * @see #getContent()
+	 */
+    public function hashCode(): int
+    {
+		return crc32($this->content);
+	}
+
+	/** Two unit objects are equal if there content strings are equal. */
+    public function equals(object $other): bool
+    {
+		// contrary to the myths on the net this is not slower than catching
+		// the class cast exception
+		if (!($other instanceof Unit)) {
+			return false;
+		}
+
+		// we use equals(), which is fast for the same string (i.e. same
+		// reference) but still can cope with different references (if there are
+		// non-interned strings).
+		return $this->content === $other->content;
+	}
+
+	/**
+	 * Returns whether this unit is synthetic. Default implementation returns
+	 * false. Override for synthetic units
+	 */
+    public function isSynthetic(): bool
+    {
+		return false;
+	}
+
+	/** Checks whether other unit stems from same element */
+    public function inSameElement(Unit $other): bool
+    {
+		return $this->getElementUniformPath() === $other.getElementUniformPath();
+	}
+}
+
 class Delta
 {
     /** The first list of objects.
@@ -1189,8 +1353,8 @@ class CloneConsumer
     public function addClone(int $globalPosition, int $length): CloneObject
     {
         // compute length of clone in lines
-        $firstUnit = $this->units[globalPosition];
-        $lastUnit = $this->units[globalPosition + length - 1];
+        $firstUnit = $this->units[$globalPosition];
+        $lastUnit = $this->units[$globalPosition + $length - 1];
         /** @var Unit[] */
         $cloneUnits = array_slice($this->units, $globalPosition, $globalPosition + $length);
 
@@ -1206,8 +1370,8 @@ class CloneConsumer
             $this->currentCloneClass,
             $this->createCloneLocation(
                 $element,
-                $firstUnit.getFilteredStartOffset(),
-                $lastUnit.getFilteredEndOffset()
+                $firstUnit->getFilteredStartOffset(),
+                $lastUnit->getFilteredEndOffset()
             ),
             $this->startUnitIndexInElement,
             $this->lengthInUnits,
@@ -1321,7 +1485,7 @@ class GapDetectingCloneConsumer extends CloneConsumer
             $element = $this->resolveElement($clone->getUniformPath());
             $this->fillGaps($clone, $delta, $globalPosition, $element);
         } else {
-            $clone.setDeltaInUnits(0);
+            $clone->setDeltaInUnits(0);
             $this->firstClone = $clone;
             $this->firstPos = $globalPosition;
             $this->firstLength = $length;
@@ -1343,14 +1507,14 @@ class GapDetectingCloneConsumer extends CloneConsumer
                 $pos--;
                 /** @var Unit */
                 $unit = $this->units[$globalPosition + $pos];
-                $rawStartOffset = $element->getUnfilteredOffset($unit.getFilteredStartOffset());
-                $rawEndOffset = $element->getUnfilteredOffset($unit.getFilteredEndOffset());
+                $rawStartOffset = $element->getUnfilteredOffset($unit->getFilteredStartOffset());
+                $rawEndOffset = $element->getUnfilteredOffset($unit->getFilteredEndOffset());
                 $clone->addGap(new Region($rawStartOffset, $rawEndOffset));
             } else if ($firstNeedsGaps) {
                 $pos = -$pos - 1;
                 $unit = $this->units[$this->firstPos + $pos];
-                $rawStartOffset = $element->getUnfilteredOffset($unit.getFilteredStartOffset());
-                $rawEndOffset = $element->getUnfilteredOffset($unit.getFilteredEndOffset());
+                $rawStartOffset = $element->getUnfilteredOffset($unit->getFilteredStartOffset());
+                $rawEndOffset = $element->getUnfilteredOffset($unit->getFilteredEndOffset());
                 $this->firstClone->addGap(new Region($rawStartOffset, $rawEndOffset));
             }
         }
