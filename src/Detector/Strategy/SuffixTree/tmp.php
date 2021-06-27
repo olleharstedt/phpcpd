@@ -175,7 +175,7 @@ abstract class Unit
 	/** Checks whether other unit stems from same element */
     public function inSameElement(Unit $other): bool
     {
-		return $this->getElementUniformPath() === $other.getElementUniformPath();
+		return $this->getElementUniformPath() === $other->getElementUniformPath();
 	}
 }
 
@@ -961,7 +961,7 @@ class CloneObject extends KeyValueStoreBase
      *
      * @var ?Region[]
 	 */
-	public $gaps = null;
+	public $gaps = [];
 
     /** Delta size in units
      * @var int */
@@ -1475,7 +1475,9 @@ class CloneConsumer
         $endUnitIndexInElement = $lastUnit->getIndexInElement();
         $lengthInUnits = $endUnitIndexInElement - $startUnitIndexInElement + 1;
         //var_dump($lengthInUnits);
-        assert($lengthInUnits >= 0, "Negative length in units!");
+        if ($lengthInUnits < 0) {
+            throw new Exception("Negative length in units!");
+        }
         $fingerprint = $this->createFingerprint($globalPosition, $length);
         //var_dump($fingerprint);
         //var_dump($this->currentCloneClass);

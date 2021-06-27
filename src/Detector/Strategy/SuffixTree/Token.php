@@ -57,11 +57,11 @@ class Token extends AbstractToken
 
     public function getFilteredStartOffset(): int
     {
-        return 0;
+        return $this->line;
     }
 
     public function getFilteredEndOffset(): int
     {
-        return 1;
+        return $this->line;
     }
 }

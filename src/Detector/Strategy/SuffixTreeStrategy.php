@@ -119,9 +119,10 @@ final class SuffixTreeStrategy extends AbstractStrategy
             foreach ($clones as $clone) {
                 //var_dump(get_class($clone));
                 var_dump($clone->getLocation()->getLocation());
-                //foreach ($clone->gaps as $gap) {
-                    //var_dump($gap);
-                //}
+                //var_dump(count($clone->gaps));
+                foreach ($clone->gaps as $gap) {
+                    var_dump($gap);
+                }
             }
         }
     }
