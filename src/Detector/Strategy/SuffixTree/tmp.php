@@ -405,7 +405,7 @@ class SimpleRegion
 			return $r->overlaps($this->this);
 		}
 
-		return $start <= $r->start && $this->end >= $r->start;
+		return $this->start <= $r->start && $this->end >= $r->start;
 	}
 
 	/** Checks if two regions are adjacent */
@@ -524,6 +524,51 @@ abstract class ConstraintBase implements ICloneClassConstraint
     protected function setup(): void
     {
 		// Empty default implementation
+	}
+}
+
+class NonOverlappingConstraint extends ConstraintBase
+ {
+     public function satisfied(CloneClass $cloneClass): bool
+     {
+		$cloneRegions = [];
+
+		// Look for overlaps
+		//for (Clone clone : cloneClass.getClones()) {
+		foreach ($cloneClass->getClones() as $clone) {
+			$uniformPath = $clone->getUniformPath();
+			$location = $clone->getLocation();
+            $cloneRegion = new Region(
+                $location->getRawStartOffset(),
+                $location->getRawEndOffset()
+            );
+
+            if (isset($cloneRegions[$uniformPath])) {
+                if ($this->overlaps($cloneRegion, $cloneRegions[$uniformPath])) {
+                    return false;
+                }
+            }
+			$cloneRegions[$uniformPath][] = $cloneRegion;
+		}
+
+		// If code reaches here, no overlap was found
+		return true;
+	}
+
+	/** Checks whether a region overlaps with any region in a list of regions */
+	private function overlaps(Region $cloneRegion, array $regionsInSameFile = null): bool
+    {
+		if ($regionsInSameFile === null) {
+			return false;
+		}
+
+		//for (Region region : regionsInSameFile) {
+		foreach ($regionsInSameFile as $region) {
+			if ($region->overlaps($cloneRegion)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
 
@@ -1417,7 +1462,8 @@ class CloneConsumer
         $this->results = new MultiplexingCloneClassesCollection();
         $this->idProvider = new IdProvider();
         $this->constraints = new ConstraintList();
-        $this->constraints->add(new CardinalityConstraint());
+        //$this->constraints->add(new CardinalityConstraint());
+        //$this->constraints->add(new NonOverlappingConstraint());
         $this->units = $word;
 
         foreach ($word as $token) {
@@ -1623,7 +1669,7 @@ class GapDetectingCloneConsumer extends CloneConsumer
                 $pos--;
                 /** @var Unit */
                 $unit = $this->units[$globalPosition + $pos];
-                var_dump($unit);
+                //var_dump($unit);
                 $rawStartOffset = $element->getUnfilteredOffset($unit->getFilteredStartOffset());
                 $rawEndOffset = $element->getUnfilteredOffset($unit->getFilteredEndOffset());
                 $clone->addGap(new Region($rawStartOffset, $rawEndOffset));
