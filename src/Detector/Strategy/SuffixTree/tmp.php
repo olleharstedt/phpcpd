@@ -674,7 +674,7 @@ class ElementLocation
 	 */
     public function toLocationString(): string
     {
-		return getUniformPath();
+		return $this->getUniformPath();
 	}
 
     public function __toString(): string
@@ -1623,6 +1623,7 @@ class GapDetectingCloneConsumer extends CloneConsumer
                 $pos--;
                 /** @var Unit */
                 $unit = $this->units[$globalPosition + $pos];
+                var_dump($unit);
                 $rawStartOffset = $element->getUnfilteredOffset($unit->getFilteredStartOffset());
                 $rawEndOffset = $element->getUnfilteredOffset($unit->getFilteredEndOffset());
                 $clone->addGap(new Region($rawStartOffset, $rawEndOffset));
