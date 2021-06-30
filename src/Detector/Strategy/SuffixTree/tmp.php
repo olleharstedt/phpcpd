@@ -1467,9 +1467,9 @@ class CloneConsumer
         $this->units = $word;
 
         foreach ($word as $token) {
-            $this->uniformPathToElement[$token->file . '_' . $token->line] = new TextRegionLocation(
-                $token->file . '_' . $token->line,
-                $token->file . '_' . $token->line,
+            $this->uniformPathToElement[$token->file] = new TextRegionLocation(
+                $token->file . ':' . $token->line,
+                $token->file,
                 $token->line,
                 $token->line,
                 $token->line,

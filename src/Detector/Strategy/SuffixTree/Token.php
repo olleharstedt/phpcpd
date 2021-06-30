@@ -42,7 +42,7 @@ class Token extends AbstractToken
 
     public function getElementUniformPath(): string
     {
-        return $this->file . '_' . $this->line;
+        return $this->file;
     }
 
     public function getIndexInElement(): int
